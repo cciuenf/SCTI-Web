@@ -1,0 +1,8 @@
+[submodule "SCTI-2025-Backend"]
+	path = SCTI-2025-Backend
+	url = https://github.com/cciuenf/SCTI-2025-Backend.git
+	branch = production
+[submodule "SCTI-2025-Frontend"]
+	path = SCTI-2025-Frontend
+	url = https://github.com/cciuenf/SCTI-2025-Frontend.git
+	branch = production

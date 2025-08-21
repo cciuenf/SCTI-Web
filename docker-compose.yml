@@ -1,0 +1,84 @@
+services:
+  db:
+    image: postgres:latest
+    container_name: database-layer
+    environment:
+      POSTGRES_DB: ${DATABASE}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASS}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./SCTI-2025-Backend/src/create.sh:/docker-entrypoint-initdb.d/create.sh
+    networks:
+      - internal
+
+  backend:
+    build: ./SCTI-2025-Backend/src
+    container_name: backend
+    volumes:
+      - ./SCTI-2025-Backend/src:/app
+      - ~/.cache/go-build:/root/.cache/go-build
+      - ~/go/pkg/mod:/go/pkg/mod
+    working_dir: /app
+    depends_on:
+      - db
+    environment:
+      - HOST=${HOST}
+      - PORT=${PORT}
+      - DATABASE=${DATABASE}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASS=${DATABASE_PASS}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DB_HOST=db
+      - JWT_SECRET=${JWT_SECRET}
+      - SCTI_EMAIL=${SCTI_EMAIL}
+      - SCTI_APP_PASSWORD=${SCTI_APP_PASSWORD}
+    command: air -c .air.toml
+    networks:
+      - internal
+
+  frontend:
+    build: ./SCTI-2025-Frontend
+    container_name: frontend
+    depends_on:
+      - backend
+    networks:
+      - internal
+
+  nginx:
+    build: ./Nginx
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    volumes:
+      - ./letsencrypt/www:/var/www/certbot/:ro
+      - ./letsencrypt/conf:/etc/letsencrypt/:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  certbot:
+    build: ./Certbot
+    container_name: certbot
+    volumes:
+      - ./letsencrypt/www:/var/www/certbot/:rw
+      - ./letsencrypt/conf:/etc/letsencrypt/:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - EMAIL=${SCTI_EMAIL}
+    networks:
+      - internal
+    restart: unless-stopped
+    depends_on:
+      - nginx
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
+    driver: bridge
