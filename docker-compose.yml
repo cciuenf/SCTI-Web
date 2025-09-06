@@ -12,42 +12,154 @@ services:
     networks:
       - internal
 
-  backend:
-    build: ./SCTI-2025-Backend/src
-    container_name: backend
+  # Development backend with file watching
+  backend-dev:
+    build:
+      context: ./SCTI-2025-Backend/src
+      target: development
+    container_name: backend-dev
+    profiles: ["dev", "development"]
     volumes:
       - ./SCTI-2025-Backend/src:/app
       - ~/.cache/go-build:/root/.cache/go-build
       - ~/go/pkg/mod:/go/pkg/mod
+      - backend_logs:/app/logs  # Added volume for logs
+      - backend_data:/app/data  # Added volume for other backend files
     working_dir: /app
     depends_on:
       - db
     environment:
-      - HOST=${HOST}
-      - PORT=${PORT}
       - DATABASE=${DATABASE}
-      - DATABASE_USER=${DATABASE_USER}
       - DATABASE_PASS=${DATABASE_PASS}
       - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_USER=${DATABASE_USER}
+      - HOST=${HOST}
       - DB_HOST=db
+      - PORT=${PORT}
       - JWT_SECRET=${JWT_SECRET}
+      - SITE_URL=${SITE_URL}
       - SCTI_EMAIL=${SCTI_EMAIL}
+      - MASTER_USER_PASS=${MASTER_USER_PASS}
       - SCTI_APP_PASSWORD=${SCTI_APP_PASSWORD}
-    command: air -c .air.toml
+      - REFRESH_EXPIRE_TIME=${REFRESH_EXPIRE_TIME}
+      - TEST_REFRESH_EXPIRE_TIME=${TEST_REFRESH_EXPIRE_TIME}
+      - MERCADO_PAGO_PUBLIC_KEY=${MERCADO_PAGO_PUBLIC_KEY}
+      - MERCADO_PAGO_ACCESS_TOKEN=${MERCADO_PAGO_ACCESS_TOKEN}
+      - WEBHOOK_SIGNATURE=${WEBHOOK_SIGNATURE}
+      - FORCE_REAUTH=${FORCE_REAUTH}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - internal
 
+  # Production backend (compiled)
+  backend:
+    build:
+      context: ./SCTI-2025-Backend/src
+      target: production
+    container_name: backend
+    profiles: ["prod", "production"]
+    volumes:
+      - backend_logs:/root/logs    # Volume for production logs
+      - backend_data:/root/data    # Volume for production data
+    depends_on:
+      - db
+    environment:
+      - DATABASE=${DATABASE}
+      - DATABASE_PASS=${DATABASE_PASS}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_USER=${DATABASE_USER}
+      - HOST=${HOST}
+      - DB_HOST=db
+      - PORT=${PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - SITE_URL=${SITE_URL}
+      - SCTI_EMAIL=${SCTI_EMAIL}
+      - MASTER_USER_PASS=${MASTER_USER_PASS}
+      - SCTI_APP_PASSWORD=${SCTI_APP_PASSWORD}
+      - REFRESH_EXPIRE_TIME=${REFRESH_EXPIRE_TIME}
+      - TEST_REFRESH_EXPIRE_TIME=${TEST_REFRESH_EXPIRE_TIME}
+      - MERCADO_PAGO_PUBLIC_KEY=${MERCADO_PAGO_PUBLIC_KEY}
+      - MERCADO_PAGO_ACCESS_TOKEN=${MERCADO_PAGO_ACCESS_TOKEN}
+      - WEBHOOK_SIGNATURE=${WEBHOOK_SIGNATURE}
+      - FORCE_REAUTH=${FORCE_REAUTH}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - internal
+
+  frontend-dev:
+    build:
+      context: ./SCTI-2025-Frontend
+      target: development
+    container_name: frontend-dev
+    profiles: ["dev", "development"]
+    ports:
+      - "3002:3000"  # Changed from 3000:3000 to 3002:3000
+    volumes:
+      - ./SCTI-2025-Frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend-dev
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - API_BASE_URL=${API_BASE_URL}
+      - NEXT_PUBLIC_API_KEY_MERCADO=${NEXT_PUBLIC_API_KEY_MERCADO}
+      - SUPPORTER_PRODUCT_ID=${SUPPORTER_PRODUCT_ID}
+      - FORCE_REAUTH=${FORCE_REAUTH}
+    networks:
+      - internal
+
+  # Production frontend (built)
   frontend:
-    build: ./SCTI-2025-Frontend
+    build:
+      context: ./SCTI-2025-Frontend
+      target: production
     container_name: frontend
+    profiles: ["prod", "production"]
+    ports:
+      - "3002:3000"  # Changed from 3000:3000 to 3002:3000
     depends_on:
       - backend
+    environment:
+      - NODE_ENV=${NODE_ENV}
+      - API_BASE_URL=${API_BASE_URL}
+      - NEXT_PUBLIC_API_KEY_MERCADO=${NEXT_PUBLIC_API_KEY_MERCADO}
+      - SUPPORTER_PRODUCT_ID=${SUPPORTER_PRODUCT_ID}
+      - FORCE_REAUTH=${FORCE_REAUTH}
     networks:
       - internal
 
+  # Development nginx
+  nginx-dev:
+    build: ./Nginx
+    container_name: nginx-dev
+    profiles: ["dev", "development"]
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend-dev
+      - frontend-dev
+    volumes:
+      - ./letsencrypt/www:/var/www/certbot/:ro
+      - ./letsencrypt/conf:/etc/letsencrypt/:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Production nginx
   nginx:
     build: ./Nginx
     container_name: nginx
+    profiles: ["prod", "production"]
     ports:
       - "80:80"
       - "443:443"
@@ -61,9 +173,28 @@ services:
       - internal
     restart: unless-stopped
 
+  # Development certbot
+  certbot-dev:
+    build: ./Certbot
+    container_name: certbot-dev
+    profiles: ["dev", "development"]
+    volumes:
+      - ./letsencrypt/www:/var/www/certbot/:rw
+      - ./letsencrypt/conf:/etc/letsencrypt/:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - EMAIL=${SCTI_EMAIL}
+    networks:
+      - internal
+    restart: unless-stopped
+    depends_on:
+      - nginx-dev
+
+  # Production certbot
   certbot:
     build: ./Certbot
     container_name: certbot
+    profiles: ["prod", "production"]
     volumes:
       - ./letsencrypt/www:/var/www/certbot/:rw
       - ./letsencrypt/conf:/etc/letsencrypt/:rw
@@ -76,8 +207,85 @@ services:
     depends_on:
       - nginx
 
+  # Grafana for monitoring and log visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    profiles: ["monitoring", "dev", "development", "prod", "production"]
+    ports:
+      - "3000:3000"  # Changed from 3001:3001 to 3000:3000
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Loki for log aggregation
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    profiles: ["monitoring", "dev", "development", "prod", "production"]
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_data:/loki
+      - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Alloy for log and metrics collection (replaces Promtail)
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    profiles: ["monitoring", "dev", "development", "prod", "production"]
+    ports:
+      - "12345:12345"
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Add this line
+      - backend_logs:/backend_logs:ro
+      - ./monitoring/alloy-config.alloy:/etc/alloy/config.alloy:ro
+    command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data", "--server.http.listen-addr=0.0.0.0:12345"]  # Fixed command
+    networks:
+      - internal
+    restart: unless-stopped
+    depends_on:
+      - loki  # Prometheus for metrics collection
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    profiles: ["monitoring", "dev", "development", "prod", "production"]
+    volumes:
+      - prometheus_data:/prometheus
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+      - '--web.external-url=https://sctiuenf.com.br/prometheus/'
+      - '--web.route-prefix=/'
+    networks:
+      - internal
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  backend_logs:    # New volume for backend logs
+  backend_data:    # New volume for backend data
+  grafana_data:    # Volume for Grafana data
+  loki_data:       # Volume for Loki data
+  prometheus_data: # Volume for Prometheus data
 
 networks:
   internal:

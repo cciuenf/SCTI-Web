@@ -1,29 +1,21 @@
 #!/bin/bash
 
 # Aguardar o Nginx iniciar
-echo "Aguardando Nginx iniciar..."
+echo "Aguardando Nginx iniciar para o desafio webroot..."
 sleep 15
 
-# Parar o Nginx temporariamente para usar modo standalone
-echo "Parando Nginx para obter certificados..."
-docker stop nginx
-
-# Obter certificados usando modo standalone
-echo "Obtendo certificados SSL..."
-certbot certonly --standalone \
+# Obter certificados via webroot (não para o Nginx)
+echo "Obtendo/Verificando certificados SSL..."
+certbot certonly --webroot -w /var/www/certbot \
     -d sctiuenf.com.br \
     --email "$EMAIL" \
     --non-interactive \
     --agree-tos \
-    --force-renewal
+    --quiet
 
-# Reiniciar o Nginx
-echo "Reiniciando Nginx..."
-docker start nginx
-
-# Iniciar cron em segundo plano
+# Iniciar cron em segundo plano para renovações futuras
 echo "Iniciando agendador de renovação..."
-crond -f
+crond -f &
 
-# Manter o container rodando
+# Manter o container rodando e exibir logs de renovação
 tail -f /var/log/cron.log

@@ -1,0 +1,160 @@
+// Alloy configuration for log and metrics collection
+
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+// Loki endpoint configuration
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// Docker container logs discovery
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Process Docker container logs
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.containers.targets
+  forward_to = [loki.process.containers.receiver]
+}
+
+// Process container logs
+loki.process "containers" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.json {
+    expressions = {
+      output    = "log",
+      stream    = "stream",
+      timestamp = "time",
+    }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339"
+  }
+
+  stage.labels {
+    values = {
+      stream = "",
+    }
+  }
+
+  stage.output {
+    source = "output"
+  }
+}
+
+// Backend application logs from files (JSON format)
+local.file_match "backend_logs" {
+  path_targets = [{
+    __path__ = "/backend_logs/*.log",
+    job      = "backend-app",
+  }]
+}
+
+loki.source.file "backend_logs" {
+  targets    = local.file_match.backend_logs.targets
+  forward_to = [loki.process.backend.receiver]
+}
+
+// Process backend application logs (JSON objects)
+loki.process "backend" {
+  forward_to = [loki.write.default.receiver]
+
+  // Parse each line as JSON
+  stage.json {
+    expressions = {
+      timestamp    = "timestamp",
+      method       = "method",
+      path         = "path",
+      status       = "status",
+      ip_address   = "ip_address",
+      user_agent   = "user_agent",
+      duration_ms  = "duration_ms",
+      user_id      = "user_id",
+      user_email   = "user_email",
+      user_name    = "user_name",
+      is_verified  = "is_verified",
+      is_super     = "is_super",
+      admin_status = "admin_status",
+    }
+  }
+
+  // Extract timestamp from JSON
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339"
+  }
+
+  // Create labels from key JSON fields for easy filtering
+  stage.labels {
+    values = {
+      method     = "",
+      status     = "",
+      path       = "",
+      user_id    = "",
+      is_super   = "",
+    }
+  }
+
+  // Create a readable log message combining key fields
+  stage.template {
+    source   = "output"
+    template = "{{ .method }} {{ .path }} {{ .status }} {{ .duration_ms }}ms {{ if .user_email }}[{{ .user_email }}]{{ end }}"
+  }
+}
+
+// System logs
+local.file_match "syslog" {
+  path_targets = [{
+    __path__ = "/var/log/syslog",
+    job      = "syslog",
+  }]
+}
+
+loki.source.file "syslog" {
+  targets    = local.file_match.syslog.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+// Prometheus remote write endpoint
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+// Self-monitoring: collect Alloy metrics
+prometheus.scrape "alloy" {
+  targets = [{
+    __address__ = "127.0.0.1:12345",
+  }]
+  forward_to = [prometheus.remote_write.default.receiver]
+  job_name   = "alloy"
+}
+
+// Scrape Loki metrics
+prometheus.scrape "loki" {
+  targets = [{
+    __address__ = "loki:3100",
+  }]
+  forward_to = [prometheus.remote_write.default.receiver]
+  job_name   = "loki"
+}
+
+// Scrape Grafana metrics
+prometheus.scrape "grafana" {
+  targets = [{
+    __address__ = "grafana:3000",
+  }]
+  forward_to = [prometheus.remote_write.default.receiver]
+  job_name   = "grafana"
+}
