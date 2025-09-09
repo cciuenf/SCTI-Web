@@ -106,7 +106,6 @@ services:
       - ./SCTI-2025-Frontend:/app
       - /app/node_modules
       - /app/.next
-      - frontend_logs:/app/logs
     depends_on:
       - backend-dev
     environment:
