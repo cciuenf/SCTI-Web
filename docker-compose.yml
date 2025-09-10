@@ -126,6 +126,8 @@ services:
     profiles: ["prod", "production"]
     ports:
       - "3002:3000"  # Changed from 3000:3000 to 3002:3000
+    volumes:
+      - frontend_logs:/app/logs
     depends_on:
       - backend
     environment:
@@ -251,6 +253,7 @@ services:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Add this line
       - backend_logs:/backend_logs:ro
+      - frontend_logs:frontend_logs:ro
       - ./monitoring/alloy-config.alloy:/etc/alloy/config.alloy:ro
     command: ["run", "/etc/alloy/config.alloy", "--storage.path=/var/lib/alloy/data", "--server.http.listen-addr=0.0.0.0:12345"]  # Fixed command
     networks:
@@ -282,6 +285,7 @@ services:
 volumes:
   postgres_data:
   backend_logs:    # New volume for backend logs
+  frontend_logs:
   backend_data:    # New volume for backend data
   grafana_data:    # Volume for Grafana data
   loki_data:       # Volume for Loki data
