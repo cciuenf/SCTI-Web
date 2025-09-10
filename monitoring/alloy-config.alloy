@@ -147,21 +147,28 @@ loki.process "frontend" {
     }
   }
 
+    stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339"
+  }
+
     stage.labels {
     values = {
       method     = "",
       path       = "",
-      hostname    = "",
-      ip_address   = "",
-      user_agent   = "",
+      level      = ""
     }
   }
 
   // Create a readable log message combining key fields
   stage.template {
     source   = "output"
-    template = "{{ .method }} {{ .path }} {{ .hostname }} {{ .ip_address }} {{ .duration_ms }}ms {{ .rate_limit }} {{.message}}"
+    template = "[{{ .level | upper }}] {{ .message }} | path={{.path}} duration_ms={{.duration_ms}}"
   }
+
+  stage.output {
+    source = "output"
+  }
 
 }
 
