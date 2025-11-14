@@ -144,9 +144,6 @@ services:
     build: ./Nginx
     container_name: nginx-dev
     profiles: ["dev", "development"]
-    ports:
-      - "80:80"
-      - "443:443"
     depends_on:
       - backend-dev
       - frontend-dev
@@ -155,6 +152,8 @@ services:
       - ./letsencrypt/conf:/etc/letsencrypt/:ro
     networks:
       - internal
+    environment:
+      - SSL_ENABLED=${SSL_ENABLED:-false}
     restart: unless-stopped
 
   # Production nginx
@@ -162,9 +161,6 @@ services:
     build: ./Nginx
     container_name: nginx
     profiles: ["prod", "production"]
-    ports:
-      - "80:80"
-      - "443:443"
     depends_on:
       - backend
       - frontend
@@ -173,6 +169,8 @@ services:
       - ./letsencrypt/conf:/etc/letsencrypt/:ro
     networks:
       - internal
+    environment:
+      - SSL_ENABLED=${SSL_ENABLED:-false}
     restart: unless-stopped
 
   # Development certbot

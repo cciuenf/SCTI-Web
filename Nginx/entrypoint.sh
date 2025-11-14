@@ -19,13 +19,16 @@ check_certificates() {
     return 1
 }
 
-# Verificar certificados a cada 10 segundos
-while true; do
-    if check_certificates; then
-        break
-    fi
-    sleep 10
-done
+if [ "$SSL_ENABLED" = "true" ]; then
+    echo "SSL enabled, waiting for certificates..."
+    # Verificar certificados a cada 10 segundos
+    while true; do
+        if check_certificates; then
+            break
+        fi
+        sleep 10
+    done
+fi
 
 # Manter o container rodando
 wait $NGINX_PID
